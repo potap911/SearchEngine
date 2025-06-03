@@ -1,0 +1,34 @@
+package searchengine.entity;
+
+import lombok.*;
+import org.hibernate.annotations.OnDelete;
+import org.hibernate.annotations.OnDeleteAction;
+
+import javax.persistence.*;
+
+@Data
+@Entity
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+@Table(name = "search_index")
+public class SearchIndex {
+
+    @Id
+    @NonNull
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(name = "lemma_rank")
+    private int lemmaRank;
+
+    @ManyToOne(cascade = CascadeType.REMOVE)
+    @OnDelete(action = OnDeleteAction.CASCADE)
+    @JoinColumn(name = "page_id", insertable = false, updatable = false, nullable = false)
+    private Page page;
+
+    @ManyToOne(cascade = CascadeType.REMOVE)
+    @OnDelete(action = OnDeleteAction.CASCADE)
+    @JoinColumn(name = "lemma_id", insertable = false, updatable = false, nullable = false)
+    private Lemma lemma;
+}
