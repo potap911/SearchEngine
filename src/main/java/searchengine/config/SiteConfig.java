@@ -3,9 +3,9 @@ package searchengine.config;
 import lombok.Getter;
 import lombok.Setter;
 
-@Setter
 @Getter
-public class Site {
+@Setter
+public class SiteConfig {
     private String url;
     private String name;
 }

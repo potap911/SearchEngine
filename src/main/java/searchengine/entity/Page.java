@@ -15,21 +15,20 @@ public class Page {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @NonNull
     private Long id;
 
-    @Column(columnDefinition = "TEXT", nullable = false)
+    @Column(nullable = false)
     @NonNull
     private String path;
 
     @Column(nullable = false)
     @NonNull
-    private Short code;
+    private Integer code;
 
     @Column(columnDefinition = "MEDIUMTEXT", nullable = false)
     private String content;
 
     @ManyToOne()
-    @JoinColumn(name = "site_id", insertable = false, updatable = false, nullable = false)
+    @JoinColumn(name = "site_id", nullable = false)
     private Site site;
 }

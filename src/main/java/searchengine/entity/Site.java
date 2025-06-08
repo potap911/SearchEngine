@@ -1,6 +1,7 @@
 package searchengine.entity;
 
 import lombok.*;
+import searchengine.dto.enums.Status;
 
 import javax.persistence.*;
 import java.sql.Timestamp;
@@ -16,7 +17,6 @@ public class Site {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @NonNull
     private Long id;
 
     @Enumerated(EnumType.STRING)

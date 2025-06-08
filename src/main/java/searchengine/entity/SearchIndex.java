@@ -15,7 +15,6 @@ import javax.persistence.*;
 public class SearchIndex {
 
     @Id
-    @NonNull
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 

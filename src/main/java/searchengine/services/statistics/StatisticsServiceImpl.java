@@ -1,12 +1,12 @@
-package searchengine.services;
+package searchengine.services.statistics;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
-import searchengine.config.Site;
-import searchengine.config.SitesList;
+import searchengine.config.SiteConfig;
+import searchengine.config.SiteListConfig;
 import searchengine.dto.statistics.DetailedStatisticsItem;
 import searchengine.dto.statistics.StatisticsData;
-import searchengine.dto.statistics.StatisticsResponse;
+import searchengine.dto.statistics.StatisticsRs;
 import searchengine.dto.statistics.TotalStatistics;
 
 import java.util.ArrayList;
@@ -18,10 +18,10 @@ import java.util.Random;
 public class StatisticsServiceImpl implements StatisticsService {
 
     private final Random random = new Random();
-    private final SitesList sites;
+    private final SiteListConfig siteListConfig;
 
     @Override
-    public StatisticsResponse getStatistics() {
+    public StatisticsRs getStatistics() {
         String[] statuses = { "INDEXED", "FAILED", "INDEXING" };
         String[] errors = {
                 "Ошибка индексации: главная страница сайта не доступна",
@@ -30,16 +30,16 @@ public class StatisticsServiceImpl implements StatisticsService {
         };
 
         TotalStatistics total = new TotalStatistics();
-        total.setSites(sites.getSites().size());
+        total.setSites(siteListConfig.getSites().size());
         total.setIndexing(true);
 
         List<DetailedStatisticsItem> detailed = new ArrayList<>();
-        List<Site> sitesList = sites.getSites();
+        List<SiteConfig> sitesList = siteListConfig.getSites();
         for(int i = 0; i < sitesList.size(); i++) {
-            Site site = sitesList.get(i);
+            SiteConfig siteConfig = sitesList.get(i);
             DetailedStatisticsItem item = new DetailedStatisticsItem();
-            item.setName(site.getName());
-            item.setUrl(site.getUrl());
+            item.setName(siteConfig.getName());
+            item.setUrl(siteConfig.getUrl());
             int pages = random.nextInt(1_000);
             int lemmas = pages * random.nextInt(1_000);
             item.setPages(pages);
@@ -53,7 +53,7 @@ public class StatisticsServiceImpl implements StatisticsService {
             detailed.add(item);
         }
 
-        StatisticsResponse response = new StatisticsResponse();
+        StatisticsRs response = new StatisticsRs();
         StatisticsData data = new StatisticsData();
         data.setTotal(total);
         data.setDetailed(detailed);

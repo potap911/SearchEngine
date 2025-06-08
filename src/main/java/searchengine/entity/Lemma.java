@@ -16,7 +16,6 @@ public class Lemma {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @NonNull
     private Long id;
 
     @ManyToOne(cascade = CascadeType.REMOVE)
