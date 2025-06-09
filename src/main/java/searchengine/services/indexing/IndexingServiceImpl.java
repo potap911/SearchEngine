@@ -111,12 +111,13 @@ public class IndexingServiceImpl implements IndexingService {
 
     @Override
     public BaseRs indexPage(IndexPageRq rq) {
-        String url = null;
+        String url;
         try {
             url = new URI(rq.getUrl()).normalize().toString();
         } catch (URISyntaxException e) {
             String warn = String.format("[URL_VALIDATION_FAILED] %s", e.getMessage());
             logger.warn(warn);
+            return getBaseRs(false, "Данная страница не прошла валидацию");
         }
 
         String siteName = findSiteNameConfig(url);
