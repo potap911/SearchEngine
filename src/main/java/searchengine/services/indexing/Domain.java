@@ -11,6 +11,7 @@ import org.slf4j.LoggerFactory;
 import searchengine.config.UserAgentConfig;
 
 import java.io.IOException;
+import java.net.MalformedURLException;
 import java.util.HashSet;
 import java.util.Set;
 
@@ -28,7 +29,7 @@ public class Domain {
         this.innerLinkSet = innerLinkSet;
     }
 
-    public static Domain getInstance(String rootUrl, String previousUrl, String currentUrl) throws IOException, HttpStatusException {
+    public static Domain getInstance(String rootUrl, String previousUrl, String currentUrl) throws IOException {
         Connection.Response response = request(currentUrl);
         Document document = response.parse();
 

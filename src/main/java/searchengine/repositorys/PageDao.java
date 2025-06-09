@@ -8,4 +8,5 @@ import searchengine.entity.Page;
 @Repository
 @Transactional
 public interface PageDao extends JpaRepository<Page, Long> {
+    Page findByPath(String path);
 }

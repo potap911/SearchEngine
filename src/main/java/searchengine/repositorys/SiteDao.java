@@ -13,6 +13,8 @@ import searchengine.entity.Site;
 @Transactional
 public interface SiteDao extends JpaRepository<Site, Long> {
 
+    Site findByName(String name);
+
     @Modifying
     @Query("""
             UPDATE Site s

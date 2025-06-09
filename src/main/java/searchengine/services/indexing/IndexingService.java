@@ -1,9 +1,10 @@
 package searchengine.services.indexing;
 
 import searchengine.dto.BaseRs;
+import searchengine.dto.indexing.IndexPageRq;
 
 public interface IndexingService {
-    BaseRs indexPage(String url);
+    BaseRs indexPage(IndexPageRq rq);
     BaseRs startIndexing();
     BaseRs stopIndexing();
 }

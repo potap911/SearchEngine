@@ -1,18 +1,19 @@
 package searchengine.controllers;
 
+import com.sun.istack.NotNull;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 import searchengine.dto.BaseRs;
+import searchengine.dto.indexing.IndexPageRq;
 import searchengine.dto.search.SearchRs;
 import searchengine.dto.statistics.StatisticsRs;
 import searchengine.services.indexing.IndexingService;
 import searchengine.services.search.SearchService;
 import searchengine.services.statistics.StatisticsService;
+
+import javax.validation.Valid;
 
 @Validated
 @RestController
@@ -40,8 +41,8 @@ public class SearchEngineApiController {
     }
 
     @PostMapping("${endpoint.searchEngineApi.method.indexPage}")
-    public ResponseEntity<BaseRs> indexPage() {
-        return ResponseEntity.ok(indexingService.indexPage());
+    public ResponseEntity<BaseRs> indexPage(@Valid @ModelAttribute IndexPageRq rq) {
+        return ResponseEntity.ok(indexingService.indexPage(rq));
     }
 
     @GetMapping("${endpoint.searchEngineApi.method.search}")

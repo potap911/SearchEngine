@@ -1,7 +1,6 @@
 package searchengine.services.indexing;
 
 import lombok.RequiredArgsConstructor;
-import org.jsoup.HttpStatusException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -9,28 +8,26 @@ import searchengine.config.SiteConfig;
 import searchengine.config.SiteListConfig;
 import searchengine.dto.BaseRs;
 import searchengine.dto.enums.Status;
+import searchengine.dto.indexing.IndexPageRq;
 import searchengine.entity.Page;
 import searchengine.entity.Site;
 import searchengine.repositorys.PageDao;
 import searchengine.repositorys.SiteDao;
 
 import java.io.IOException;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.ForkJoinPool;
 
+import static searchengine.constants.Constant.URL_REGEX;
+
 @Service
 @RequiredArgsConstructor
 public class IndexingServiceImpl implements IndexingService {
     private static final Logger logger = LoggerFactory.getLogger(IndexingServiceImpl.class);
-
-    private static final String INDEXING_IS_NOT_RUNNING_ERROR = "Индексация не запущена";
-    private static final String INDEXING_IS_RUNNING_ERROR = "Индексация уже запущена";
-    private static final String INDEXING_STOPPED_BY_USER_LAST_ERROR = "[STOPPED_INDEXING] [Индексация остановлена пользователем]";
-    private static final String NOT_RECEIPTED_SITE_STRING_FORMAT_LAST_ERROR = "[NOT_RECEIPTED] [Site name: %s] [url: %s] [id: %s]";
-    private static final String NOT_RECEIPTED_PAGE_HTTP_EXP_STRING_FORMAT_LAST_ERROR = "[NOT_RECEIPTED] %s [Status code: %s] [Message: %s]";
-    private static final String NOT_RECEIPTED_PAGE_IO_EXP_STRING_FORMAT_LAST_ERROR = "[NOT_RECEIPTED] %s [Message: %s]";
 
     private ForkJoinPool pool;
     private Map<String, Set<String>> sitesMap;
@@ -39,53 +36,45 @@ public class IndexingServiceImpl implements IndexingService {
     private final SiteDao siteDao;
     private final PageDao pageDao;
 
-    private static StringBuilder lastErrorBuilder;
-    private static boolean isStartIndexing = false;
+    private static final StringBuilder lastErrorBuilder = new StringBuilder();
 
     @Override
     public BaseRs startIndexing() {
-        if (isStartIndexing) {
-            return BaseRs.builder()
-                    .result(false)
-                    .error(INDEXING_IS_RUNNING_ERROR)
-                    .build();
-        }
+        if (pool != null && !pool.isShutdown()) return getBaseRs(false, "Индексация уже запущена");
 
-        isStartIndexing = true;
         pageDao.deleteAll();
         siteDao.deleteAll();
 
         pool = new ForkJoinPool(siteListConfig.getSites().size());
         sitesMap = new HashMap<>(siteListConfig.getSites().size());
-        lastErrorBuilder = new StringBuilder();
 
         siteListConfig.getSites()
                 .forEach(siteConfig -> {
-                    Site site = siteDao.save(Site.builder()
-                            .name(siteConfig.getName())
-                            .url(siteConfig.getUrl())
-                            .status(Status.INDEXING)
-                            .statusTime(Timestamp.from(Instant.now()))
-                            .build());
-                    if (Domain.isAvailable(siteConfig.getUrl())) {
-                        sitesMap.put(site.getName(), new HashSet<>());
-                        pool.submit(new Thread(() -> startIndexing(site, site.getUrl(), site.getUrl())));
-                    } else {
-                        String warn = String.format(NOT_RECEIPTED_SITE_STRING_FORMAT_LAST_ERROR, site.getName(), site.getUrl(), site.getId());
-                        lastErrorBuilder.append(warn).append("\n");
-                        siteDao.updateStatus(site.getId(), Status.FAILED, lastErrorBuilder.toString());
-                        logger.warn("[NOT CONNECTION] [name: {}] [url: {}] [id: {}]", site.getName(), site.getUrl(), site.getId());
-                    }
+                    if (siteConfig.getUrl().matches(URL_REGEX)) {
+                        try {
+                            String currentUrl = new URI(siteConfig.getUrl()).normalize().toString();
+                            Site site = siteDao.save(Site.builder()
+                                    .name(siteConfig.getName())
+                                    .url(currentUrl)
+                                    .status(Status.INDEXING)
+                                    .statusTime(Timestamp.from(Instant.now()))
+                                    .build());
+                            sitesMap.put(site.getName(), new HashSet<>());
+                            pool.submit(new Thread(() -> startIndexing(site, site.getUrl(), site.getUrl())));
+                        } catch (URISyntaxException e) {
+                            saveSiteUrlValidationFailed(siteConfig,
+                                    String.format("[URL_VALIDATION_FAILED] %s", e.getMessage()));
+                        }
+                    } else saveSiteUrlValidationFailed(siteConfig, String.format("[URL_VALIDATION_FAILED] %s %s", siteConfig.getName(), siteConfig.getUrl()));
                 });
-        return BaseRs.builder()
-                .result(true)
-                .build();
+        return getBaseRs(true, null);
     }
 
     private void startIndexing(Site site, String previousUrl, String currentUrl) {
         if (pool.isShutdown()) return;
-        try {
-            Domain domain = Domain.getInstance(site.getUrl(), previousUrl, currentUrl);
+
+        Domain domain = getDomain(site, previousUrl, currentUrl);
+        if (domain != null) {
             domain.getInnerLinkSet()
                     .forEach(link -> {
                         if (sitesMap.get(site.getName()).add(link)) {
@@ -98,21 +87,13 @@ public class IndexingServiceImpl implements IndexingService {
                             siteDao.updateStatusTime(site.getId());
                             if (link.contains(site.getUrl())) {
                                 startIndexing(site, currentUrl, link);
-                            } startIndexing(site, currentUrl, site.getUrl() + link);
+                            }
+                            startIndexing(site, currentUrl, site.getUrl() + link);
                         }
                     });
-        } catch (HttpStatusException e) {
-            String warn = String.format(NOT_RECEIPTED_PAGE_HTTP_EXP_STRING_FORMAT_LAST_ERROR, currentUrl, e.getStatusCode(), e.getMessage());
-            lastErrorBuilder.append(warn).append("\n");
-            siteDao.updateLastError(site.getId(), lastErrorBuilder.toString());
-            logger.warn(warn);
-        } catch (IOException e) {
-            String warn = String.format(NOT_RECEIPTED_PAGE_IO_EXP_STRING_FORMAT_LAST_ERROR, currentUrl, e.getMessage());
-            lastErrorBuilder.append(warn).append("\n");
-            siteDao.updateLastError(site.getId(), lastErrorBuilder.toString());
-            logger.warn(warn);
         }
-        if (!pool.isShutdown() && currentUrl.equals(site.getUrl())) {
+
+        if (!pool.isShutdown() && site.getStatus() == Status.INDEXING && currentUrl.equals(site.getUrl())) {
             siteDao.updateStatus(site.getId(), Status.INDEXED);
         }
     }
@@ -121,26 +102,91 @@ public class IndexingServiceImpl implements IndexingService {
     public BaseRs stopIndexing() {
         if (pool != null && !pool.isShutdown()) {
             pool.shutdownNow();
-            siteDao.updateStatusAfterStopIndexing(Status.INDEXING, Status.FAILED, INDEXING_STOPPED_BY_USER_LAST_ERROR);
-            isStartIndexing = false;
-            return BaseRs.builder()
-                    .result(true)
-                    .build();
+            siteDao.updateStatusAfterStopIndexing(Status.INDEXING, Status.FAILED,
+                    "[STOPPED_INDEXING] [Индексация остановлена пользователем]");
+            return getBaseRs(true, null);
         }
-        return BaseRs.builder()
-                .result(false)
-                .error(INDEXING_IS_NOT_RUNNING_ERROR)
-                .build();
+        return getBaseRs(false, "Индексация не запущена");
     }
 
     @Override
-    public BaseRs indexPage(String url) {
-        /*String siteName = siteListConfig.getSites().stream()
-                .filter(siteConfig -> url.contains(siteConfig.getUrl()))
-                .map(siteConfig -> siteConfig.getName());*/
+    public BaseRs indexPage(IndexPageRq rq) {
+        String url = null;
+        try {
+            url = new URI(rq.getUrl()).normalize().toString();
+        } catch (URISyntaxException e) {
+            String warn = String.format("[URL_VALIDATION_FAILED] %s", e.getMessage());
+            logger.warn(warn);
+        }
 
+        String siteName = findSiteNameConfig(url);
+        if (siteName == null) {
+            return getBaseRs(false, "Данная страница находится за пределами сайтов, указанных в конфигурационном файле");
+        }
 
-        Domain domain = Domain.getInstance()
+        Site site = siteDao.findByName(siteName);
+        String path = url.replaceAll(site.getUrl(), "/");
+        ;
+        System.out.println(path);
+        Page page = pageDao.findByPath(path);
+        if (page == null) page = new Page();
+
+        Domain domain = getDomain(site, url, url);
+        if (domain != null) {
+            page.setSite(site);
+            page.setCode(domain.getCode());
+            page.setContent(domain.getHtml());
+            page.setPath(path);
+            pageDao.save(page);
+            siteDao.updateStatusTime(site.getId());
+            return getBaseRs(true, null);
+        } else return getBaseRs(false, "Данная страница не получена");
+    }
+
+    private String findSiteNameConfig(String url) {
+        for (SiteConfig siteConfig : siteListConfig.getSites()) {
+            if (url.contains(siteConfig.getUrl())) {
+                return siteConfig.getName();
+            }
+        }
         return null;
+    }
+
+    private Domain getDomain(Site site, String previousUrl, String currentUrl) {
+        try {
+            return Domain.getInstance(site.getUrl(), previousUrl, currentUrl);
+        } catch (IOException e) {
+            saveLastError(site, currentUrl, e.getMessage());
+        }
+        return null;
+    }
+
+    private void saveLastError(Site site, String currentUrl, String message) {
+        String warn = String.format("[NOT_RECEIPTED] %s [Message: %s]", currentUrl, message);
+        logger.warn(warn);
+        lastErrorBuilder.append(warn).append("\n");
+        if (site.getUrl().equals(currentUrl)) {
+            site.setStatus(Status.FAILED);
+            siteDao.updateStatus(site.getId(), Status.FAILED, lastErrorBuilder.toString());
+        } else siteDao.updateLastError(site.getId(), lastErrorBuilder.toString());
+    }
+
+    private BaseRs getBaseRs(boolean result, String error) {
+        logger.debug(String.format("[BaseRs] [result: %s] [error: %s]", result, error));
+        return BaseRs.builder()
+                .result(result)
+                .error(error)
+                .build();
+    }
+
+    private void saveSiteUrlValidationFailed(SiteConfig siteConfig, String warn) {
+        logger.warn(warn);
+        siteDao.save(Site.builder()
+                .name(siteConfig.getName())
+                .url(siteConfig.getUrl())
+                .status(Status.FAILED)
+                .lastError(warn)
+                .statusTime(Timestamp.from(Instant.now()))
+                .build());
     }
 }
