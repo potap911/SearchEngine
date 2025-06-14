@@ -1,0 +1,49 @@
+
+
+indexing-settings:
+  sites:
+    - url: http://www.playback.ru/
+      name: Playback.Ru
+    - url: https://nikoartgallery.com/
+      name: NikoArtGallery.Ru
+
+user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 YaBrowser/25.4.0.0 Safari/537.36
+referrer: https://www.google.ru/
+timeout: 500
+url-regex: ^(https?|ftp|file)://[-a-zA-Z0-9+&@#/%?=~_|!:,.;]*[-a-zA-Z0-9+&@#!:,.;/%=~_|]
+
+server:
+  port: 8080
+
+spring:
+  datasource:
+    username: root
+    password: '@Potapchik007'
+    url: jdbc:mysql://localhost:3306/search_engine?allowPublicKeyRetrieval=true
+    driverClassName: com.mysql.cj.jdbc.Driver
+
+  jpa:
+    generate-ddl: true
+    show-sql: true
+    properties:
+      hibernate:
+        jdbc:
+          batch_size: 50
+        order_inserts: true
+        order_updates: true
+        format-sql: true
+        dialect: org.hibernate.dialect.MySQL5InnoDBDialect
+        ddl-auto: update
+
+endpoint:
+  searchEngineApi:
+    prefix: /api
+    method:
+      statistics: /statistics
+      startIndexing: /startIndexing
+      stopIndexing: /stopIndexing
+      indexPage: /indexPage
+      search: /search
+
+
+

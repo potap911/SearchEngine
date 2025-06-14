@@ -5,7 +5,7 @@ import lombok.Data;
 import javax.validation.constraints.NotBlank;
 import javax.validation.constraints.Pattern;
 
-import static searchengine.constants.Constant.URL_REGEX;
+import static searchengine.config.BrowserConfig.URL_REGEX;
 
 @Data
 public class IndexPageRq {

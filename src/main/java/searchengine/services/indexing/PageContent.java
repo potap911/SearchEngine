@@ -2,34 +2,33 @@ package searchengine.services.indexing;
 
 import lombok.Getter;
 import lombok.Setter;
+import lombok.SneakyThrows;
 import org.jsoup.Connection;
-import org.jsoup.HttpStatusException;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import searchengine.config.UserAgentConfig;
+import searchengine.config.BrowserConfig;
 
 import java.io.IOException;
-import java.net.MalformedURLException;
 import java.util.HashSet;
 import java.util.Set;
 
 @Getter
 @Setter
-public class Domain {
-    private static final Logger logger = LoggerFactory.getLogger(Domain.class);
+public class PageContent {
+    private static final Logger logger = LoggerFactory.getLogger(PageContent.class);
     private Set<String> innerLinkSet;
     private String html;
     private int code;
 
-    private Domain(int code, String html, Set<String> innerLinkSet) {
+    private PageContent(int code, String html, Set<String> innerLinkSet) {
         this.code = code;
         this.html = html;
         this.innerLinkSet = innerLinkSet;
     }
 
-    public static Domain getInstance(String rootUrl, String previousUrl, String currentUrl) throws IOException {
+    public static PageContent getContent(String rootUrl, String previousUrl, String currentUrl) throws IOException {
         Connection.Response response = request(currentUrl);
         Document document = response.parse();
 
@@ -43,23 +42,16 @@ public class Domain {
                 });
 
         logger.info("[RECEIPTED] {}", currentUrl);
-        return new Domain(response.statusCode(), document.body().html(), innerLinkSet);
+        return new PageContent(response.statusCode(), document.body().html(), innerLinkSet);
     }
 
-    public static Connection.Response request(String url) throws IOException {
+    @SneakyThrows
+    public static Connection.Response request(String url) {
         return Jsoup.connect(url)
-                .timeout(UserAgentConfig.TIMEOUT)
-                .userAgent(UserAgentConfig.USER_AGENT)
-                .referrer(UserAgentConfig.REFERRER)
+                .timeout(BrowserConfig.TIMEOUT)
+                .userAgent(BrowserConfig.USER_AGENT)
+                .referrer(BrowserConfig.REFERRER)
                 .execute();
-    }
-
-    public static boolean isAvailable(String url) {
-        try {
-            return request(url).statusCode() == 200;
-        } catch (IOException e) {
-            return false;
-        }
     }
 
     private static boolean isInnerLink(String link, String rootUrl, String previousUrl, String currentUrl) {
@@ -69,6 +61,7 @@ public class Domain {
                 && !link.equals(previousUrl)
                 && !link.equals("/")
                 && !link.contains(".jpg")
+                && !link.contains(".mp3")
                 && !link.contains(".webp")
                 && !link.contains(".pdf")
                 && !link.contains(".svg")

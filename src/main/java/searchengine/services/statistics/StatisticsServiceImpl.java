@@ -1,64 +1,88 @@
 package searchengine.services.statistics;
 
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
-import searchengine.config.SiteConfig;
 import searchengine.config.SiteListConfig;
+import searchengine.dto.enums.Status;
 import searchengine.dto.statistics.DetailedStatisticsItem;
 import searchengine.dto.statistics.StatisticsData;
 import searchengine.dto.statistics.StatisticsRs;
 import searchengine.dto.statistics.TotalStatistics;
+import searchengine.entity.Site;
+import searchengine.repositorys.LemmaDao;
+import searchengine.repositorys.PageDao;
+import searchengine.repositorys.SiteDao;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Random;
 
 @Service
 @RequiredArgsConstructor
 public class StatisticsServiceImpl implements StatisticsService {
+    private static final Logger logger = LoggerFactory.getLogger(StatisticsServiceImpl.class);
 
-    private final Random random = new Random();
     private final SiteListConfig siteListConfig;
+
+    private final SiteDao siteDao;
+    private final PageDao pageDao;
+    private final LemmaDao lemmaDao;
 
     @Override
     public StatisticsRs getStatistics() {
-        String[] statuses = { "INDEXED", "FAILED", "INDEXING" };
-        String[] errors = {
-                "Ошибка индексации: главная страница сайта не доступна",
-                "Ошибка индексации: сайт не доступен",
-                ""
-        };
+        List<Site> siteList = siteDao.findAll();
 
-        TotalStatistics total = new TotalStatistics();
-        total.setSites(siteListConfig.getSites().size());
-        total.setIndexing(true);
-
-        List<DetailedStatisticsItem> detailed = new ArrayList<>();
-        List<SiteConfig> sitesList = siteListConfig.getSites();
-        for(int i = 0; i < sitesList.size(); i++) {
-            SiteConfig siteConfig = sitesList.get(i);
-            DetailedStatisticsItem item = new DetailedStatisticsItem();
-            item.setName(siteConfig.getName());
-            item.setUrl(siteConfig.getUrl());
-            int pages = random.nextInt(1_000);
-            int lemmas = pages * random.nextInt(1_000);
-            item.setPages(pages);
-            item.setLemmas(lemmas);
-            item.setStatus(statuses[i % 3]);
-            item.setError(errors[i % 3]);
-            item.setStatusTime(System.currentTimeMillis() -
-                    (random.nextInt(10_000)));
-            total.setPages(total.getPages() + pages);
-            total.setLemmas(total.getLemmas() + lemmas);
-            detailed.add(item);
+        if (siteList.isEmpty()) {
+            return getErrorStatisticsRs("Индексированные сайты отсутствуют");
         }
+        StatisticsRs rs = StatisticsRs.builder()
+                .result(true)
+                .statistics(StatisticsData.builder()
+                        .total(TotalStatistics.builder()
+                                .sites(siteList.size())
+                                .pages(pageDao.selectCountPages())
+                                .lemmas(lemmaDao.selectCountLemmas())
+                                .indexing(isIndexing(siteList))
+                                .build())
+                        .detailed(getDetailedStatisticsItemList(siteList))
+                        .build())
+                .build();
+        logger.info("[RESPONSE] {}", rs.toString());
+        return rs;
+    }
 
-        StatisticsRs response = new StatisticsRs();
-        StatisticsData data = new StatisticsData();
-        data.setTotal(total);
-        data.setDetailed(detailed);
-        response.setStatistics(data);
-        response.setResult(true);
-        return response;
+    private List<DetailedStatisticsItem> getDetailedStatisticsItemList(List<Site> siteList) {
+        List<DetailedStatisticsItem> detailedStatisticsItemList = new ArrayList<>(siteList.size());
+        siteList.forEach(site -> {
+            detailedStatisticsItemList.add(DetailedStatisticsItem.builder()
+                            .url(site.getUrl())
+                            .name(site.getName())
+                            .status(site.getStatus().name())
+                            .statusTime(site.getStatusTime().getTime())
+                            .error(site.getLastError())
+                            .pages(site.getPages().size())
+                            .lemmas(site.getLemmas().size())
+                    .build());
+        });
+        return detailedStatisticsItemList;
+    }
+
+    private boolean isIndexing(List<Site> siteList) {
+        for (Site site : siteList) {
+            if (site.getStatus() == Status.INDEXING) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private StatisticsRs getErrorStatisticsRs(String error) {
+        StatisticsRs rs = StatisticsRs.builder()
+                .result(false)
+                .error(error)
+                .build();
+        logger.info("[RESPONSE] {}", rs.toString());
+        return rs;
     }
 }

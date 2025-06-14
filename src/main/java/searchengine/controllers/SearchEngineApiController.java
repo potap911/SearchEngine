@@ -1,7 +1,8 @@
 package searchengine.controllers;
 
-import com.sun.istack.NotNull;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
@@ -20,6 +21,7 @@ import javax.validation.Valid;
 @RequestMapping("${endpoint.searchEngineApi.prefix}")
 @RequiredArgsConstructor
 public class SearchEngineApiController {
+    private static final Logger logger = LoggerFactory.getLogger(SearchEngineApiController.class);
 
     private final StatisticsService statisticsService;
     private final IndexingService indexingService;
@@ -27,26 +29,31 @@ public class SearchEngineApiController {
 
     @GetMapping("${endpoint.searchEngineApi.method.statistics}")
     public ResponseEntity<StatisticsRs> statistics() {
+        logger.info("[REQUEST] statistics");
         return ResponseEntity.ok(statisticsService.getStatistics());
     }
 
     @GetMapping("${endpoint.searchEngineApi.method.startIndexing}")
     public ResponseEntity<BaseRs> startIndexing() {
+        logger.info("[REQUEST] startIndexing");
         return ResponseEntity.ok(indexingService.startIndexing());
     }
 
     @GetMapping("${endpoint.searchEngineApi.method.stopIndexing}")
     public ResponseEntity<BaseRs> stopIndexing() {
+        logger.info("[REQUEST] stopIndexing");
         return ResponseEntity.ok(indexingService.stopIndexing());
     }
 
     @PostMapping("${endpoint.searchEngineApi.method.indexPage}")
     public ResponseEntity<BaseRs> indexPage(@Valid @ModelAttribute IndexPageRq rq) {
+        logger.info("[REQUEST] indexPage {}", rq.getUrl());
         return ResponseEntity.ok(indexingService.indexPage(rq));
     }
 
     @GetMapping("${endpoint.searchEngineApi.method.search}")
     public ResponseEntity<SearchRs> search() {
+        logger.info("[REQUEST] search");
         return ResponseEntity.ok(searchService.search());
     }
 }

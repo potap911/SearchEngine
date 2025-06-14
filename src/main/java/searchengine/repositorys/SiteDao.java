@@ -15,6 +15,13 @@ public interface SiteDao extends JpaRepository<Site, Long> {
 
     Site findByName(String name);
 
+    @Query("""
+            SELECT lastError
+            FROM Site s
+            WHERE s.id = :id
+            """)
+    String selectLastError(@Param("id") Long id);
+
     @Modifying
     @Query("""
             UPDATE Site s

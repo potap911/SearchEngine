@@ -41,7 +41,7 @@ public class Site {
 
     @OneToMany(orphanRemoval = true)
     @JoinColumn(name = "site_id")
-    private List<Page> page;
+    private List<Page> pages;
 
     @OneToMany(orphanRemoval = true)
     @JoinColumn(name = "site_id")
