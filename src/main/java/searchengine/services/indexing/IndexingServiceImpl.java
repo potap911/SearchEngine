@@ -1,6 +1,7 @@
 package searchengine.services.indexing;
 
 import lombok.RequiredArgsConstructor;
+import org.jsoup.Jsoup;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -12,20 +13,20 @@ import searchengine.dto.enums.Status;
 import searchengine.dto.indexing.IndexPageRq;
 import searchengine.entity.Lemma;
 import searchengine.entity.Page;
+import searchengine.entity.SearchIndex;
 import searchengine.entity.Site;
 import searchengine.repositorys.LemmaDao;
 import searchengine.repositorys.PageDao;
+import searchengine.repositorys.SearchIndexDao;
 import searchengine.repositorys.SiteDao;
+import searchengine.utils.Lemanizer;
+import searchengine.utils.PageContent;
 
 import java.io.IOException;
-import java.net.URI;
-import java.net.URISyntaxException;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.ForkJoinPool;
-
-import static searchengine.config.BrowserConfig.URL_REGEX;
 
 @Service
 @RequiredArgsConstructor
@@ -34,69 +35,37 @@ public class IndexingServiceImpl implements IndexingService {
 
     private ForkJoinPool pool;
     private HashMap<String, Set<String>> sitesMap;
+    //private HashMap<String, Lemma> lemmaMap;
     private final SiteListConfig siteListConfig;
 
     private final SiteDao siteDao;
     private final PageDao pageDao;
     private final LemmaDao lemmaDao;
+    private final SearchIndexDao searchIndexDao;
 
     @Autowired
     private final Lemanizer lemanizer;
 
     @Override
     public BaseRs startIndexing() {
-        if (pool != null && !pool.isShutdown()) return getBaseRs(false, "Индексация уже запущена");
-        lemmaDao.deleteAll();
-        pageDao.deleteAll();
-        siteDao.deleteAll();
+        logger.debug("[START_INDEXING]");
+        if (pool != null && !pool.isShutdown()) return BaseRs.getBaseRs(false, "Indexing is already running");
+        deleteAllIndex();
         pool = new ForkJoinPool(siteListConfig.getSites().size());
         sitesMap = new HashMap<>(siteListConfig.getSites().size());
+        //lemmaMap = new HashMap<>();
         runSiteCrawling();
-        return getBaseRs(true, null);
-    }
-
-    @Override
-    public BaseRs stopIndexing() {
-        if (pool != null && !pool.isShutdown()) {
-            clearPoolAndSitesMap();
-            siteDao.updateStatusAfterStopIndexing(Status.INDEXING, Status.FAILED,
-                    "[STOPPED_INDEXING] Индексация остановлена пользователем");
-            return getBaseRs(true, null);
-        }
-        return getBaseRs(false, "Индексация не запущена");
-    }
-
-    @Override
-    public BaseRs indexPage(IndexPageRq rq) {
-        String pageUrl = normalizeUrl(rq.getUrl());
-        if (pageUrl == null) return getBaseRs(false, "Данная страница не прошла валидацию");
-        String siteName = findSiteNameConfig(pageUrl);
-        if (siteName == null) {
-            return getBaseRs(false, "Данная страница находится за пределами сайтов, указанных в конфигурационном файле");
-        }
-        Site site = siteDao.findByName(siteName);
-        String path = pageUrl.replaceAll(site.getUrl(), "/");
-        Page page = pageDao.findByPath(path);
-        if (page == null) page = new Page();
-        PageContent pageContent = getPageContent(site, pageUrl, pageUrl);
-        if (pageContent != null) {
-            page.setSite(site);
-            page.setCode(pageContent.getCode());
-            page.setContent(pageContent.getHtml());
-            page.setPath(path);
-            pageDao.save(page);
-            saveLemma(site, pageContent.getHtml());
-            siteDao.updateStatusTime(site.getId());
-            return getBaseRs(true, null);
-        } else return getBaseRs(false, "Данная страница не получена");
+        return BaseRs.getBaseRs(true, null);
     }
 
     private void runSiteCrawling() {
+        logger.debug("[RUN_SITE_CRAWLING]");
         siteListConfig.getSites()
                 .forEach(siteConfig -> {
-                    String siteUrl = normalizeUrl(siteConfig.getUrl());
+                    String siteUrl = SiteListConfig.normalizeUrl(siteConfig.getUrl());
                     if (siteUrl != null) {
                         Site site = saveSiteToIndexing(siteConfig.getName(), siteUrl);
+                        sitesMap.put(site.getName(), new HashSet<>());
                         pool.submit(new Thread(() -> runPageCrawling(site, site.getUrl(), site.getUrl())));
                     } else
                         saveSiteUrlValidationFailed(siteConfig, String.format("[URL_VALIDATION_FAILED] %s %s", siteConfig.getName(), siteConfig.getUrl()));
@@ -104,20 +73,21 @@ public class IndexingServiceImpl implements IndexingService {
     }
 
     private void runPageCrawling(Site site, String previousUrl, String currentUrl) {
+        logger.debug("[RUN_PAGE_CRAWLING]");
         if (pool.isShutdown()) return;
         PageContent pageContent = getPageContent(site, previousUrl, currentUrl);
         if (pageContent == null) return;
-        savePageContent(site, pageContent, currentUrl.replaceFirst(site.getUrl(), "/"));
-        saveLemma(site, pageContent.getHtml());
+        Page page = savePage(site, pageContent, currentUrl);
+        saveLemmaAndSearchIndex(site, page);
         siteDao.updateStatusTime(site.getId());
         pageContent.getInnerLinkSet()
                 .forEach(link -> {
                     if (sitesMap.get(site.getName()).add(link)) {
                         if (link.startsWith(site.getUrl())) {
-                            String nextUrl = normalizeUrl(link);
+                            String nextUrl = SiteListConfig.normalizeUrl(link);
                             if (nextUrl != null) runPageCrawling(site, currentUrl, nextUrl);
                         } else if (!link.startsWith("http")) {
-                            String nextUrl = normalizeUrl(site.getUrl() + link);
+                            String nextUrl = SiteListConfig.normalizeUrl(site.getUrl() + link);
                             if (nextUrl != null) runPageCrawling(site, currentUrl, nextUrl);
                         }
                     }
@@ -129,16 +99,53 @@ public class IndexingServiceImpl implements IndexingService {
         }
     }
 
-    private String findSiteNameConfig(String url) {
-        for (SiteConfig siteConfig : siteListConfig.getSites()) {
-            if (url.contains(siteConfig.getUrl())) {
-                return siteConfig.getName();
-            }
+    @Override
+    public BaseRs stopIndexing() {
+        logger.debug("[STOP_INDEXING]");
+        if (pool != null && !pool.isShutdown()) {
+            clearPoolAndSitesMap();
+            siteDao.updateStatusAfterStopIndexing(Status.INDEXING, Status.FAILED,
+                    "[STOPPED_INDEXING] Indexing stopped by the user");
+            return BaseRs.getBaseRs(true, null);
         }
-        return null;
+        return BaseRs.getBaseRs(false, "Indexing is not running");
+    }
+
+    @Override
+    public BaseRs indexPage(IndexPageRq rq) {
+        logger.debug("[INDEX_PAGE]");
+        SiteConfig siteConfig = siteListConfig.findSiteNameConfig(rq.getUrl());
+        if (siteConfig == null) {
+            return BaseRs.getBaseRs(false, "This page is located outside the sites specified in the configuration file");
+        }
+        runUpdatePage(siteConfig);
+        return BaseRs.getBaseRs(true, null);
+    }
+
+    private void runUpdatePage(SiteConfig siteConfig) {
+        logger.debug("[RUN_UPDATE_PAGE]");
+        new Thread(() -> {
+            Site site = siteDao.findByName(siteConfig.getName());
+
+            if (site == null) {
+                site = saveSiteToIndexing(siteConfig.getName(), siteConfig.getUrl());
+            }
+
+            String path = siteConfig.getUrl().replaceAll(site.getUrl(), "/");
+            Page page = pageDao.findByPathAndSiteId(path, site.getId());
+            deleteIndexPage(page);
+
+            PageContent pageContent = getPageContent(site, siteConfig.getUrl(), siteConfig.getUrl());
+            if (pageContent != null) {
+                page = savePage(site, pageContent, siteConfig.getUrl());
+                saveLemmaAndSearchIndex(site, page);
+                siteDao.updateStatusTime(site.getId());
+            }
+        }).start();
     }
 
     private PageContent getPageContent(Site site, String previousUrl, String currentUrl) {
+        logger.debug("[GET_PAGE_CONTENT]");
         try {
             return PageContent.getContent(site.getUrl(), previousUrl, currentUrl);
         } catch (IOException e) {
@@ -148,49 +155,81 @@ public class IndexingServiceImpl implements IndexingService {
     }
 
     private Site saveSiteToIndexing(String name, String url) {
+        logger.debug("[SAVE_SITE_TO_INDEXING]");
         Site site = siteDao.save(Site.builder()
                 .name(name)
                 .url(url)
                 .status(Status.INDEXING)
                 .statusTime(Timestamp.from(Instant.now()))
                 .build());
-        sitesMap.put(site.getName(), new HashSet<>());
         logger.info("[SAVED_SITE] {}", url);
         return site;
     }
 
-    private void savePageContent(Site site, PageContent pageContent, String link) {
-        if (link.length() > 255) link = link.substring(0, 255);
-        pageDao.save(Page.builder()
+    private Page savePage(Site site, PageContent pageContent, String pageUrl) {
+        logger.debug("[SAVE_PAGE_CONTENT]");
+        pageUrl = pageUrl.replaceFirst(site.getUrl(), "/");
+        if (pageUrl.length() > 255) pageUrl = pageUrl.substring(0, 255);
+        Page page = pageDao.findByPathAndSiteId(pageUrl, site.getId());
+        if (page != null) return page;
+        page = pageDao.save(Page.builder()
                 .site(site)
                 .code(pageContent.getCode())
+                .title(pageContent.getTitle())
                 .content(pageContent.getHtml())
-                .path(link)
+                .path(pageUrl)
                 .build());
-        logger.info("[SAVED_PAGE] {}", link);
+        logger.info("[SAVED_PAGE] {}", pageUrl);
+        return page;
     }
 
-    private void saveLemma(Site site, String html) {
-        Map<String, Integer> lemmaMap = lemanizer.getLemmaMap(html);
+    private void saveLemmaAndSearchIndex(Site site, Page page) {
+        logger.debug("[SAVE_LEMMA_AND_SEARCH_INDEX] {} {}", site, page);
+        if (page == null) return;
+        Map<String, Integer> lemmaMap = lemanizer.getLemmaMap(Jsoup.parse(page.getContent()).text());
         if (lemmaMap == null) return;
         lemmaMap.keySet().forEach(keyLemma -> {
-            Lemma lemma = lemmaDao.findByLemma(keyLemma);
-            if (lemma == null) {
-                lemma = Lemma.builder()
-                        .lemma(keyLemma)
-                        .site(site)
-                        .frequency(1)
-                        .build();
-                lemmaDao.save(lemma);
-            } else {
-                lemma.setFrequency(lemma.getFrequency() + lemmaMap.get(keyLemma));
-                lemmaDao.save(lemma);
+            if (keyLemma.equals("цена")) {
+                System.out.println();
             }
+            Lemma lemma = saveLemma(site, keyLemma);
+            saveSearchIndex(page, lemma, (float) lemmaMap.get(keyLemma));
         });
-        logger.info("[SAVED_LEMMAS] {}", site.getUrl());
+    }
+
+    private Lemma saveLemma(Site site, String keyLemma) {
+        logger.debug("[SAVE_LEMMA] {} for {}", keyLemma, site.getUrl());
+        /*if (lemmaMap != null && lemmaMap.containsKey(keyLemma)) {
+            return lemmaMap.get(keyLemma);
+        }*/
+        if (keyLemma.equals("цена")) {
+            System.out.println();
+        }
+        Lemma lemma = lemmaDao.findByLemma(keyLemma);
+        if (lemma == null) {
+            lemma = Lemma.builder()
+                    .lemma(keyLemma)
+                    .build();
+            lemma = lemmaDao.save(lemma);
+            logger.info("[SAVED_LEMMA] {} for {}", keyLemma, site.getUrl());
+        }
+        //lemmaMap.put(keyLemma, lemma);
+        return lemma;
+    }
+
+    private void saveSearchIndex(Page page, Lemma lemma, Float lemmaCnt) {
+        logger.debug("[SAVE_SEARCH_INDEX]");
+        searchIndexDao.save(SearchIndex.builder()
+                .lemmaRank((lemmaCnt / 100))
+                .snippet(findSnippet(lemma.getLemma(), page.getContent()))
+                .page(page)
+                .lemma(lemma)
+                .build());
+        logger.info("[SAVED_SEARCH_INDEX] Lemma id: {} for Page id: {}", lemma.getId(), page.getId());
     }
 
     private void saveLastError(Site site, String currentUrl, String message) {
+        logger.debug("[SAVE_LAST_ERROR] {}", message);
         String error = String.format("[NOT_RECEIPTED] %s %s", currentUrl, message);
         logger.info(error);
         String lastError = siteDao.selectLastError(site.getId());
@@ -203,6 +242,7 @@ public class IndexingServiceImpl implements IndexingService {
     }
 
     private void saveSiteUrlValidationFailed(SiteConfig siteConfig, String warn) {
+        logger.debug("[SAVE_SITE_URL_VALIDATION_FAILED] {}", warn);
         logger.warn(warn);
         siteDao.save(Site.builder()
                 .name(siteConfig.getName())
@@ -211,35 +251,71 @@ public class IndexingServiceImpl implements IndexingService {
                 .lastError(warn)
                 .statusTime(Timestamp.from(Instant.now()))
                 .build());
-        logger.info("[SAVED_SITE_VALIDATION_FAILED] {}", siteConfig.getUrl());
+        logger.info("[SAVED_SITE_URL_VALIDATION_FAILED] {}", siteConfig.getUrl());
     }
 
     private void clearPoolAndSitesMap() {
+        logger.debug("[CLEAR_POOL_AND_SITES_MAP]");
         pool.shutdownNow();
         pool = null;
         sitesMap.clear();
         sitesMap = null;
     }
 
-    private String normalizeUrl(String url) {
-        if (url.matches(URL_REGEX)) {
-            try {
-                return new URI(url).normalize().toString();
-            } catch (URISyntaxException e) {
-                logger.warn(String.format("[URL_VALIDATION_FAILED] %s %s", url, e.getMessage()));
-                return null;
-            }
-        }
-        logger.warn(String.format("[URL_VALIDATION_FAILED] %s", url));
-        return null;
+    private void deleteAllIndex() {
+        logger.debug("[DELETE_ALL_INDEX]");
+        lemmaDao.deleteAll();
+        pageDao.deleteAll();
+        siteDao.deleteAll();
+        searchIndexDao.deleteAll();
     }
 
-    private BaseRs getBaseRs(boolean result, String error) {
-        BaseRs rs = BaseRs.builder()
-                .result(result)
-                .error(error)
-                .build();
-        logger.info("[RESPONSE] {}", rs.toString());
-        return rs;
+    private void deleteIndexPage(Page page) {
+        logger.debug("[DELETE_INDEX_PAGE] {}", page);
+        if (page == null) return;
+        List<SearchIndex> searchIndexList = searchIndexDao.findAllByPage(page);
+        searchIndexList.forEach(searchIndex -> {
+            lemmaDao.delete(searchIndex.getLemma());
+            searchIndexDao.delete(searchIndex);
+        });
+        pageDao.delete(page);
+    }
+
+    private String findSnippet(String lemma, String html) {
+        if (lemma.equals("цена")) {
+            System.out.println();
+        }
+        String text = Jsoup.parse(html).text();
+        int start = indexOfSnippet(lemma, text);
+
+        if (start >= 0) {
+            int end = start + 240;
+            end = Math.min(end, text.length() - 1);
+            text = text.substring(start, end);
+        } else text = null;
+
+        if (text != null) {
+            return "<b>..." + text + "...</b>";
+        }
+        return text;
+    }
+
+    private int indexOfSnippet(String lemma, String text) {
+        int start = text.indexOf(lemma);
+
+        if (start < 0) {
+            String upLemma = lemma.substring(0, 1).toUpperCase() + lemma.substring(1);
+            start = text.indexOf(upLemma);
+        }
+
+        for (int i = 2; i <= 3 && start < 0; i++) {
+            String halfLemma = lemma.substring(0, lemma.length() / i + 1);
+            start = text.indexOf(halfLemma);
+            if (start < 0) {
+                String upLemma = halfLemma.substring(0, 1).toUpperCase() + halfLemma.substring(1);
+                start = text.indexOf(upLemma);
+            }
+        }
+        return start;
     }
 }

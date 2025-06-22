@@ -1,4 +1,4 @@
-package searchengine.services.indexing;
+package searchengine.utils;
 
 import lombok.Getter;
 import lombok.Setter;
@@ -19,11 +19,13 @@ import java.util.Set;
 public class PageContent {
     private static final Logger logger = LoggerFactory.getLogger(PageContent.class);
     private Set<String> innerLinkSet;
+    private String title;
     private String html;
     private int code;
 
-    private PageContent(int code, String html, Set<String> innerLinkSet) {
+    private PageContent(int code, String title, String html, Set<String> innerLinkSet) {
         this.code = code;
+        this.title = title;
         this.html = html;
         this.innerLinkSet = innerLinkSet;
     }
@@ -42,7 +44,7 @@ public class PageContent {
                 });
 
         logger.info("[RECEIPTED] {}", currentUrl);
-        return new PageContent(response.statusCode(), document.body().html(), innerLinkSet);
+        return new PageContent(response.statusCode(), document.title(), document.html(), innerLinkSet);
     }
 
     @SneakyThrows

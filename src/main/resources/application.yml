@@ -4,13 +4,15 @@ indexing-settings:
   sites:
     - url: http://www.playback.ru/
       name: Playback.Ru
-    - url: https://nikoartgallery.com/
-      name: NikoArtGallery.Ru
 
 user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 YaBrowser/25.4.0.0 Safari/537.36
 referrer: https://www.google.ru/
-timeout: 500
+timeout: 5000
 url-regex: ^(https?|ftp|file)://[-a-zA-Z0-9+&@#/%?=~_|!:,.;]*[-a-zA-Z0-9+&@#!:,.;/%=~_|]
+
+search-default-config:
+  offset: 0
+  limit: 20
 
 server:
   port: 8080

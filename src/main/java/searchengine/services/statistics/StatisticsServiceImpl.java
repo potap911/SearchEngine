@@ -4,7 +4,6 @@ import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
-import searchengine.config.SiteListConfig;
 import searchengine.dto.enums.Status;
 import searchengine.dto.statistics.DetailedStatisticsItem;
 import searchengine.dto.statistics.StatisticsData;
@@ -13,6 +12,7 @@ import searchengine.dto.statistics.TotalStatistics;
 import searchengine.entity.Site;
 import searchengine.repositorys.LemmaDao;
 import searchengine.repositorys.PageDao;
+import searchengine.repositorys.SearchIndexDao;
 import searchengine.repositorys.SiteDao;
 
 import java.util.ArrayList;
@@ -23,11 +23,10 @@ import java.util.List;
 public class StatisticsServiceImpl implements StatisticsService {
     private static final Logger logger = LoggerFactory.getLogger(StatisticsServiceImpl.class);
 
-    private final SiteListConfig siteListConfig;
-
     private final SiteDao siteDao;
     private final PageDao pageDao;
     private final LemmaDao lemmaDao;
+    private final SearchIndexDao searchIndexDao;
 
     @Override
     public StatisticsRs getStatistics() {
@@ -55,6 +54,7 @@ public class StatisticsServiceImpl implements StatisticsService {
     private List<DetailedStatisticsItem> getDetailedStatisticsItemList(List<Site> siteList) {
         List<DetailedStatisticsItem> detailedStatisticsItemList = new ArrayList<>(siteList.size());
         siteList.forEach(site -> {
+            int lemmas = lemmaDao.selectCountLemmasBySite(site);
             detailedStatisticsItemList.add(DetailedStatisticsItem.builder()
                             .url(site.getUrl())
                             .name(site.getName())
@@ -62,7 +62,7 @@ public class StatisticsServiceImpl implements StatisticsService {
                             .statusTime(site.getStatusTime().getTime())
                             .error(site.getLastError())
                             .pages(site.getPages().size())
-                            .lemmas(site.getLemmas().size())
+                            .lemmas(lemmas)
                     .build());
         });
         return detailedStatisticsItemList;

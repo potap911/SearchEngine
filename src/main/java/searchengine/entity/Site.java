@@ -43,7 +43,7 @@ public class Site {
     @JoinColumn(name = "site_id")
     private List<Page> pages;
 
-    @OneToMany(orphanRemoval = true)
+    /*@OneToMany(orphanRemoval = true)
     @JoinColumn(name = "site_id")
-    private List<Lemma> lemmas;
+    private List<Lemma> lemmas;*/
 }

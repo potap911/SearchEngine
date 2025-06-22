@@ -29,31 +29,36 @@ public class SearchEngineApiController {
 
     @GetMapping("${endpoint.searchEngineApi.method.statistics}")
     public ResponseEntity<StatisticsRs> statistics() {
-        logger.info("[REQUEST] statistics");
+        logger.info("[REQUEST] /statistics");
         return ResponseEntity.ok(statisticsService.getStatistics());
     }
 
     @GetMapping("${endpoint.searchEngineApi.method.startIndexing}")
     public ResponseEntity<BaseRs> startIndexing() {
-        logger.info("[REQUEST] startIndexing");
+        logger.info("[REQUEST] /startIndexing");
         return ResponseEntity.ok(indexingService.startIndexing());
     }
 
     @GetMapping("${endpoint.searchEngineApi.method.stopIndexing}")
     public ResponseEntity<BaseRs> stopIndexing() {
-        logger.info("[REQUEST] stopIndexing");
+        logger.info("[REQUEST] /stopIndexing");
         return ResponseEntity.ok(indexingService.stopIndexing());
     }
 
     @PostMapping("${endpoint.searchEngineApi.method.indexPage}")
     public ResponseEntity<BaseRs> indexPage(@Valid @ModelAttribute IndexPageRq rq) {
-        logger.info("[REQUEST] indexPage {}", rq.getUrl());
+        logger.info("[REQUEST] /indexPage {}", rq.getUrl());
         return ResponseEntity.ok(indexingService.indexPage(rq));
     }
 
     @GetMapping("${endpoint.searchEngineApi.method.search}")
-    public ResponseEntity<SearchRs> search() {
-        logger.info("[REQUEST] search");
-        return ResponseEntity.ok(searchService.search());
+    public ResponseEntity<SearchRs> search(
+            @RequestParam String query,
+            @RequestParam(required = false) String site,
+            @RequestParam(required = false) Integer offset,
+            @RequestParam(required = false) Integer limit
+    ) {
+        logger.info("[REQUEST] /search");
+        return ResponseEntity.ok(searchService.search(query, site, offset, limit));
     }
 }

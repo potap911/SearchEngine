@@ -10,7 +10,9 @@ import searchengine.entity.Page;
 @Transactional
 public interface PageDao extends JpaRepository<Page, Long> {
 
-    Page findByPath(String path);
+    boolean existsByPath(String path);
+
+    Page findByPathAndSiteId(String path, Long siteId);
 
     @Query("""
             SELECT COUNT(*)

@@ -19,15 +19,18 @@ public class SearchIndex {
     private Long id;
 
     @Column(name = "lemma_rank")
-    private int lemmaRank;
+    private Float lemmaRank;
+
+    @Column
+    private String snippet;
 
     @ManyToOne(cascade = CascadeType.REMOVE)
     @OnDelete(action = OnDeleteAction.CASCADE)
-    @JoinColumn(name = "page_id", insertable = false, updatable = false, nullable = false)
+    @JoinColumn(name = "page_id", nullable = false)
     private Page page;
 
     @ManyToOne(cascade = CascadeType.REMOVE)
     @OnDelete(action = OnDeleteAction.CASCADE)
-    @JoinColumn(name = "lemma_id", insertable = false, updatable = false, nullable = false)
+    @JoinColumn(name = "lemma_id", nullable = false)
     private Lemma lemma;
 }
