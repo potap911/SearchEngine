@@ -7,9 +7,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 public class DefaultController {
 
     /**
-     * Метод формирует страницу из HTML-файла index.html,
-     * который находится в папке resources/templates.
-     * Это делает библиотека Thymeleaf.
+     * The method generates a page from the index.html HTML file,
+     * which is located in the resources/templates folder.
      */
     @RequestMapping("/")
     public String index() {

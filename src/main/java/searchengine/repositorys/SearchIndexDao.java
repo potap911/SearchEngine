@@ -8,7 +8,6 @@ import org.springframework.transaction.annotation.Transactional;
 import searchengine.entity.Lemma;
 import searchengine.entity.Page;
 import searchengine.entity.SearchIndex;
-import searchengine.entity.Site;
 
 import java.util.List;
 
@@ -20,23 +19,23 @@ public interface SearchIndexDao extends JpaRepository<SearchIndex, Long> {
 
     List<SearchIndex> findAllByPage(Page page);
 
-    List<SearchIndex> findAllByLemma(Lemma lemma);
-
-    void deleteByPage(Page page);
-
     @Query("""
             SELECT s
             FROM SearchIndex s
             JOIN Lemma l ON s.lemma = l.id
-            WHERE l.lemma = :lemma
+            LEFT JOIN Alias a ON l.id = a.lemma
+            WHERE l.lemma = :lemma OR a.alias = :lemma
             """)
     List<SearchIndex> selectByLemma(@Param("lemma") String lemma);
 
     @Query("""
-            SELECT s
-            FROM SearchIndex s
-            JOIN Page p ON s.page = p.id
-            WHERE p.site = :site
+            SELECT si
+            FROM SearchIndex si
+            JOIN Lemma l ON si.lemma = l.id
+            LEFT JOIN Alias a ON l.id = a.lemma
+            JOIN Page p ON p.id = si.page
+            JOIN Site s ON s.id = p.site
+            WHERE s.id = :siteId AND (l.lemma = :lemma OR a.alias = :lemma)
             """)
-    List<SearchIndex> selectCountLemmaBySite(@Param("site") Site site);
+    List<SearchIndex> selectByLemmaAndSiteId(@Param("lemma") String lemma, @Param("siteId") Long siteId);
 }

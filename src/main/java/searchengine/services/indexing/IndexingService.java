@@ -7,4 +7,5 @@ public interface IndexingService {
     BaseRs indexPage(IndexPageRq rq);
     BaseRs startIndexing();
     BaseRs stopIndexing();
+    BaseRs addAlias(String word, String alias);
 }

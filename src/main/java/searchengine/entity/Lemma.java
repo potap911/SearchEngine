@@ -3,6 +3,7 @@ package searchengine.entity;
 import lombok.*;
 
 import javax.persistence.*;
+import java.util.List;
 
 @Data
 @Entity
@@ -17,15 +18,12 @@ public class Lemma {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    /*@ManyToOne()
-    @JoinColumn(name = "site_id", nullable = false)
-    private Site site;*/
-
     @Column(nullable = false)
     @NonNull
     private String lemma;
 
-    /*@Column(nullable = false)
-    private Integer frequency;*/
+    @OneToMany(orphanRemoval = true)
+    @JoinColumn(name = "lemma_id")
+    private List<Alias> aliases;
 }
 

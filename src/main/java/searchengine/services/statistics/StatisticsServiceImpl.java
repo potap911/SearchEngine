@@ -12,7 +12,6 @@ import searchengine.dto.statistics.TotalStatistics;
 import searchengine.entity.Site;
 import searchengine.repositorys.LemmaDao;
 import searchengine.repositorys.PageDao;
-import searchengine.repositorys.SearchIndexDao;
 import searchengine.repositorys.SiteDao;
 
 import java.util.ArrayList;
@@ -26,14 +25,13 @@ public class StatisticsServiceImpl implements StatisticsService {
     private final SiteDao siteDao;
     private final PageDao pageDao;
     private final LemmaDao lemmaDao;
-    private final SearchIndexDao searchIndexDao;
 
     @Override
     public StatisticsRs getStatistics() {
         List<Site> siteList = siteDao.findAll();
 
         if (siteList.isEmpty()) {
-            return getErrorStatisticsRs("Индексированные сайты отсутствуют");
+            return getErrorStatisticsRs();
         }
         StatisticsRs rs = StatisticsRs.builder()
                 .result(true)
@@ -77,10 +75,10 @@ public class StatisticsServiceImpl implements StatisticsService {
         return false;
     }
 
-    private StatisticsRs getErrorStatisticsRs(String error) {
+    private StatisticsRs getErrorStatisticsRs() {
         StatisticsRs rs = StatisticsRs.builder()
                 .result(false)
-                .error(error)
+                .error("Индексированные сайты отсутствуют")
                 .build();
         logger.info("[RESPONSE] {}", rs.toString());
         return rs;

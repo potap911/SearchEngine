@@ -47,8 +47,17 @@ public class SearchEngineApiController {
 
     @PostMapping("${endpoint.searchEngineApi.method.indexPage}")
     public ResponseEntity<BaseRs> indexPage(@Valid @ModelAttribute IndexPageRq rq) {
-        logger.info("[REQUEST] /indexPage {}", rq.getUrl());
+        logger.info("[REQUEST] /indexPage ({})", rq.getUrl());
         return ResponseEntity.ok(indexingService.indexPage(rq));
+    }
+
+    @GetMapping("${endpoint.searchEngineApi.method.addAlias}")
+    public ResponseEntity<BaseRs> addAlias(
+            @RequestParam String word,
+            @RequestParam String alias
+    ) {
+        logger.info("[REQUEST] /addAlias ({}, {})", word, alias);
+        return ResponseEntity.ok(indexingService.addAlias(word, alias));
     }
 
     @GetMapping("${endpoint.searchEngineApi.method.search}")
@@ -58,7 +67,7 @@ public class SearchEngineApiController {
             @RequestParam(required = false) Integer offset,
             @RequestParam(required = false) Integer limit
     ) {
-        logger.info("[REQUEST] /search");
+        logger.info("[REQUEST] /search ({}, {}, {}, {})", query, site, offset, limit);
         return ResponseEntity.ok(searchService.search(query, site, offset, limit));
     }
 }

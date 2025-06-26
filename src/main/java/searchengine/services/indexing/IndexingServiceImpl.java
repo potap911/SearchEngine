@@ -11,14 +11,8 @@ import searchengine.config.SiteListConfig;
 import searchengine.dto.BaseRs;
 import searchengine.dto.enums.Status;
 import searchengine.dto.indexing.IndexPageRq;
-import searchengine.entity.Lemma;
-import searchengine.entity.Page;
-import searchengine.entity.SearchIndex;
-import searchengine.entity.Site;
-import searchengine.repositorys.LemmaDao;
-import searchengine.repositorys.PageDao;
-import searchengine.repositorys.SearchIndexDao;
-import searchengine.repositorys.SiteDao;
+import searchengine.entity.*;
+import searchengine.repositorys.*;
 import searchengine.utils.Lemanizer;
 import searchengine.utils.PageContent;
 
@@ -35,12 +29,12 @@ public class IndexingServiceImpl implements IndexingService {
 
     private ForkJoinPool pool;
     private HashMap<String, Set<String>> sitesMap;
-    //private HashMap<String, Lemma> lemmaMap;
     private final SiteListConfig siteListConfig;
 
     private final SiteDao siteDao;
     private final PageDao pageDao;
     private final LemmaDao lemmaDao;
+    private final AliasDao aliasDao;
     private final SearchIndexDao searchIndexDao;
 
     @Autowired
@@ -53,7 +47,6 @@ public class IndexingServiceImpl implements IndexingService {
         deleteAllIndex();
         pool = new ForkJoinPool(siteListConfig.getSites().size());
         sitesMap = new HashMap<>(siteListConfig.getSites().size());
-        //lemmaMap = new HashMap<>();
         runSiteCrawling();
         return BaseRs.getBaseRs(true, null);
     }
@@ -73,7 +66,7 @@ public class IndexingServiceImpl implements IndexingService {
     }
 
     private void runPageCrawling(Site site, String previousUrl, String currentUrl) {
-        logger.debug("[RUN_PAGE_CRAWLING]");
+        logger.debug("[RUN_PAGE_CRAWLING] {}", currentUrl);
         if (pool.isShutdown()) return;
         PageContent pageContent = getPageContent(site, previousUrl, currentUrl);
         if (pageContent == null) return;
@@ -95,6 +88,7 @@ public class IndexingServiceImpl implements IndexingService {
         if (!pool.isShutdown() && currentUrl.equals(site.getUrl())) {
             if (site.getStatus() == Status.INDEXING) {
                 siteDao.updateStatus(site.getId(), Status.INDEXED);
+                logger.info("[INDEXED] {}, {}", site.getName(), site.getUrl());
             }
         }
     }
@@ -119,6 +113,30 @@ public class IndexingServiceImpl implements IndexingService {
             return BaseRs.getBaseRs(false, "This page is located outside the sites specified in the configuration file");
         }
         runUpdatePage(siteConfig);
+        return BaseRs.getBaseRs(true, null);
+    }
+
+    @Override
+    public BaseRs addAlias(String word, String aliasesInput) {
+        Set<String> lemmaSet = lemanizer.getLemmaSet(word);
+        if (lemmaSet.isEmpty()) return BaseRs.getBaseRs(false,
+                "Couldn't get the normal form of the word");
+        if (lemmaSet.size() > 1) return BaseRs.getBaseRs(false,
+                "Too many word. Let's say you enter only one word");
+        Lemma lemma = lemmaDao.findByLemma(lemmaSet.stream().findFirst().orElseThrow());
+        if (lemma == null) return BaseRs.getBaseRs(false,
+                "No lemmas were found for this word");
+
+        Alias aliasObg = aliasDao.findByAlias(aliasesInput);
+        if (aliasObg != null) {
+            return BaseRs.getBaseRs(false,
+                    "This alias has already been assigned for lemma '" + aliasObg.getLemma().getLemma() + "'");
+        }
+        aliasDao.save(Alias.builder()
+                .alias(aliasesInput)
+                .lemma(lemma)
+                .build());
+        logger.info("[SAVED_ALIAS] word: {} alias: {}", word, aliasesInput);
         return BaseRs.getBaseRs(true, null);
     }
 
@@ -162,7 +180,7 @@ public class IndexingServiceImpl implements IndexingService {
                 .status(Status.INDEXING)
                 .statusTime(Timestamp.from(Instant.now()))
                 .build());
-        logger.info("[SAVED_SITE] {}", url);
+        logger.debug("[SAVED_SITE] {}", url);
         return site;
     }
 
@@ -179,7 +197,7 @@ public class IndexingServiceImpl implements IndexingService {
                 .content(pageContent.getHtml())
                 .path(pageUrl)
                 .build());
-        logger.info("[SAVED_PAGE] {}", pageUrl);
+        logger.debug("[SAVED_PAGE] {}", pageUrl);
         return page;
     }
 
@@ -189,9 +207,6 @@ public class IndexingServiceImpl implements IndexingService {
         Map<String, Integer> lemmaMap = lemanizer.getLemmaMap(Jsoup.parse(page.getContent()).text());
         if (lemmaMap == null) return;
         lemmaMap.keySet().forEach(keyLemma -> {
-            if (keyLemma.equals("цена")) {
-                System.out.println();
-            }
             Lemma lemma = saveLemma(site, keyLemma);
             saveSearchIndex(page, lemma, (float) lemmaMap.get(keyLemma));
         });
@@ -199,33 +214,28 @@ public class IndexingServiceImpl implements IndexingService {
 
     private Lemma saveLemma(Site site, String keyLemma) {
         logger.debug("[SAVE_LEMMA] {} for {}", keyLemma, site.getUrl());
-        /*if (lemmaMap != null && lemmaMap.containsKey(keyLemma)) {
-            return lemmaMap.get(keyLemma);
-        }*/
-        if (keyLemma.equals("цена")) {
-            System.out.println();
-        }
         Lemma lemma = lemmaDao.findByLemma(keyLemma);
         if (lemma == null) {
             lemma = Lemma.builder()
                     .lemma(keyLemma)
                     .build();
             lemma = lemmaDao.save(lemma);
-            logger.info("[SAVED_LEMMA] {} for {}", keyLemma, site.getUrl());
+            logger.debug("[SAVED_LEMMA] {} for {}", keyLemma, site.getUrl());
         }
-        //lemmaMap.put(keyLemma, lemma);
         return lemma;
     }
 
     private void saveSearchIndex(Page page, Lemma lemma, Float lemmaCnt) {
         logger.debug("[SAVE_SEARCH_INDEX]");
-        searchIndexDao.save(SearchIndex.builder()
-                .lemmaRank((lemmaCnt / 100))
-                .snippet(findSnippet(lemma.getLemma(), page.getContent()))
-                .page(page)
-                .lemma(lemma)
-                .build());
-        logger.info("[SAVED_SEARCH_INDEX] Lemma id: {} for Page id: {}", lemma.getId(), page.getId());
+        if (searchIndexDao.findByPageAndLemma(page, lemma) == null) {
+            searchIndexDao.save(SearchIndex.builder()
+                    .lemmaRank((lemmaCnt / 100))
+                    .snippet(findSnippet(lemma.getLemma(), page.getContent()))
+                    .page(page)
+                    .lemma(lemma)
+                    .build());
+            logger.debug("[SAVED_SEARCH_INDEX] Lemma id: {} for Page id: {}", lemma.getId(), page.getId());
+        }
     }
 
     private void saveLastError(Site site, String currentUrl, String message) {
@@ -251,7 +261,7 @@ public class IndexingServiceImpl implements IndexingService {
                 .lastError(warn)
                 .statusTime(Timestamp.from(Instant.now()))
                 .build());
-        logger.info("[SAVED_SITE_URL_VALIDATION_FAILED] {}", siteConfig.getUrl());
+        logger.debug("[SAVED_SITE_URL_VALIDATION_FAILED] {}", siteConfig.getUrl());
     }
 
     private void clearPoolAndSitesMap() {
@@ -275,6 +285,7 @@ public class IndexingServiceImpl implements IndexingService {
         if (page == null) return;
         List<SearchIndex> searchIndexList = searchIndexDao.findAllByPage(page);
         searchIndexList.forEach(searchIndex -> {
+            aliasDao.deleteByLemmaId(searchIndex.getLemma().getId());
             lemmaDao.delete(searchIndex.getLemma());
             searchIndexDao.delete(searchIndex);
         });
@@ -282,9 +293,6 @@ public class IndexingServiceImpl implements IndexingService {
     }
 
     private String findSnippet(String lemma, String html) {
-        if (lemma.equals("цена")) {
-            System.out.println();
-        }
         String text = Jsoup.parse(html).text();
         int start = indexOfSnippet(lemma, text);
 

@@ -1,9 +1,9 @@
-
-
 indexing-settings:
   sites:
     - url: http://www.playback.ru/
       name: Playback.Ru
+    - url: https://nikoartgallery.com/
+      name: NikoArtGallery.Com
 
 user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 YaBrowser/25.4.0.0 Safari/537.36
 referrer: https://www.google.ru/
@@ -20,13 +20,13 @@ server:
 spring:
   datasource:
     username: root
-    password: '@Potapchik007'
+    password: ''
     url: jdbc:mysql://localhost:3306/search_engine?allowPublicKeyRetrieval=true
     driverClassName: com.mysql.cj.jdbc.Driver
 
   jpa:
     generate-ddl: true
-    show-sql: true
+    show-sql: false
     properties:
       hibernate:
         jdbc:
@@ -45,6 +45,7 @@ endpoint:
       startIndexing: /startIndexing
       stopIndexing: /stopIndexing
       indexPage: /indexPage
+      addAlias: /addAlias
       search: /search
 
 
